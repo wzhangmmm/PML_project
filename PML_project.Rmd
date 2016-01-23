@@ -1,0 +1,130 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+
+<br>
+
+## **Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+<br>
+
+## **Exploring and Preprocessing Data**
+
+First, we read in both training and testing data sets, and look at their dimensions.  
+
+```{r}
+training <- read.csv('pml-training.csv', na.strings = c("NA", ""))
+testing <- read.csv('pml-testing.csv', na.strings = c("NA", ""))
+dim(training); dim(testing)
+```
+
+The training data has 19622 rows and 160 columns, while the testing data has only 20 instances.  (This seems suggest we need to further split the training data into traning and validation data sets for feature selection and model evaluation etc.)
+
+<br>
+
+Summaries on the datasets show that some columns only contain (or almost are) NA's.  So we calculate the percentages of NA's in each column in both datasets, and plot the histogram of number of columns versus percentage of NA's in each column. **It turns out there are only 60 *valid* columns where there is no NA's, the other 100 columns are almost NA's (>95%)**.
+
+```{r, eval=FALSE}
+summary(training)
+summary(testing)
+```
+
+```{r}
+training_na_percent <- data.frame(sapply(training, function(y) sum(length(which(is.na(y))))/nrow(training)))
+testing_na_percent <- data.frame(sapply(testing, function(y) sum(length(which(is.na(y))))/nrow(testing)))
+names(training_na_percent) <- c('NA.Percent')
+names(testing_na_percent) <- c('NA.Percent')
+par(mfrow=c(1,2))
+hist(training_na_percent$NA.Percent, main='Training data', col='red', xlab='% of NA\'s', ylab='Numbers of columns')
+hist(testing_na_percent$NA.Percent, main='Testing data', col='red', xlab='% of NA\'s', ylab='Numbers of columns')
+```
+
+Therefore, we remove those NA columns from both traning and testing datasets. The new dimensions of datasets are 19622x60 and 20x60 respectively.
+
+```{r}
+training <- training[, training_na_percent$NA.Percent<0.95]
+testing <- testing[, testing_na_percent$NA.Percent<0.95]
+dim(training); dim(testing)
+```
+
+<br>
+
+Another finding on the datasets is that the first 7 columns are IDs, usernames, timestamps, etc. which are not really relevant for the prediction.
+
+```{r}
+summary(training[,1:7])
+```
+
+After removing the first 7 columns, the final dimensions of datasets are 19622x53 and 20x53 respectively.
+```{r}
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+dim(training); dim(testing)
+```
+
+Finally, we split the training data into 60% of training and 40% of validation.
+```{r}
+library(caret)
+set.seed(1011) 
+inTrain <- createDataPartition(training$classe, p = 0.6, list = FALSE)
+validation <- training[-inTrain, ]
+training <- training[inTrain, ]
+dim(training); dim(validation); dim(testing)
+```
+
+<br>
+
+## **Train the Random Forest model**
+Random Forest seems very suitable for this kind of non-linear classification problem. To save the computation time, the number of trees to grow *ntree* is limited to 3.
+
+```{r}
+modFit <- train(classe~., data=training, method='rf', ntree=3)
+modFit
+```
+
+<br>
+
+The most importance feature seems to be **roll_belt**.
+```{r}
+varImpPlot(modFit$finalModel)
+plot(modFit$finalModel)
+```
+
+<br>
+
+## **Validation Set**
+We evaluate the model on validation set. 
+A bit surprisingly the accurary on validation set is over **95%** even when the number of trees of grow was only 3.
+```{r}
+predValidation <- predict(modFit, validation)
+cmValidation <- confusionMatrix(validation$classe, predValidation)
+cmValidation$overall[1]
+```
+
+<br>
+
+## **Predict on Testing Set**
+
+Finally, we predict on the testing set:
+```{r}
+predict(modFit, testing)
+```
+
+<br>
+*That's it, thanks for reading!*
+
+<br>
+
